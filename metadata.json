@@ -1,0 +1,6 @@
+{
+  "name": "DocManage Mobile",
+  "description": "A responsive mobile-first application screen for managing, organizing, and viewing documents with metadata, filtering, and sorting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
