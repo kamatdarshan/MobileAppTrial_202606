@@ -1,51 +1,113 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, SlidersHorizontal, ArrowUp, ArrowDown, Plus, FileText } from 'lucide-react';
+import {
+  Search,
+  SlidersHorizontal,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  FileText,
+  Loader2,
+} from 'lucide-react';
 import { LocalFile, SortOption, SortOrder } from './types';
 import { initialFiles } from './data';
 import { FileCard } from './components/FileCard';
+import {
+  downloadFile,
+  isNative,
+  loadFiles,
+  openFile,
+  removeFile,
+  replaceFile,
+  uploadFile,
+} from './services/fileService';
+
+const CURRENT_USER = 'You';
+
+interface Toast {
+  message: string;
+  tone: 'info' | 'error';
+}
 
 export default function App() {
-  const [files, setFiles] = useState<LocalFile[]>(initialFiles);
+  const [files, setFiles] = useState<LocalFile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
 
-  const showToast = (message: string) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 3000);
+  useEffect(() => {
+    let active = true;
+    loadFiles(initialFiles)
+      .then((loaded) => {
+        if (active) setFiles(loaded);
+      })
+      .catch(() => {
+        if (active) setFiles(initialFiles);
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const showToast = (message: string, tone: Toast['tone'] = 'info') => {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 3200);
   };
 
-  const handleAction = (actionName: string, fileId: string) => {
-    const file = files.find(f => f.id === fileId);
+  const handleAction = async (actionName: string, fileId: string) => {
+    const file = files.find((f) => f.id === fileId);
     if (!file) return;
 
-    if (actionName === 'delete') {
-      setFiles(prev => prev.filter(f => f.id !== fileId));
-      showToast(`Deleted ${file.name}`);
-    } else {
-      let msg = '';
-      if (actionName === 'open') msg = `Opening ${file.name}...`;
-      if (actionName === 'download') msg = `Downloading ${file.name} to your device...`;
-      if (actionName === 'upload') msg = `Uploading new version of ${file.name}...`;
-      showToast(msg);
+    try {
+      if (actionName === 'delete') {
+        await removeFile(fileId);
+        setFiles((prev) => prev.filter((f) => f.id !== fileId));
+        showToast(`Deleted ${file.name}`);
+        return;
+      }
+
+      setBusyId(fileId);
+
+      if (actionName === 'open') {
+        await openFile(file);
+        showToast(`Opening ${file.name}…`);
+      } else if (actionName === 'download') {
+        const message = await downloadFile(file);
+        showToast(message);
+      } else if (actionName === 'replace') {
+        const updated = await replaceFile(file);
+        if (updated) {
+          setFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+          showToast(`Updated ${updated.name}`);
+        }
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Something went wrong', 'error');
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const handleGlobalUpload = () => {
-    // Mock new file addition
-    const newDocObj: LocalFile = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: `Scanned_Document_${Math.floor(Math.random() * 1000)}.pdf`,
-      category: 'pdf',
-      sizeBytes: Math.floor(Math.random() * 5000000) + 100000,
-      createdDate: new Date().toISOString(),
-      modifiedDate: new Date().toISOString(),
-      uploadedBy: 'Current User',
-    };
-    setFiles([newDocObj, ...files]);
-    showToast(`Uploaded ${newDocObj.name}`);
+  const handleGlobalUpload = async () => {
+    setIsUploading(true);
+    try {
+      const uploaded = await uploadFile(CURRENT_USER);
+      if (uploaded) {
+        setFiles((prev) => [uploaded, ...prev.filter((f) => f.id !== uploaded.id)]);
+        showToast(`Uploaded ${uploaded.name}`);
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Upload failed', 'error');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const toggleSort = (option: SortOption) => {
@@ -60,17 +122,15 @@ export default function App() {
   const filteredAndSortedFiles = useMemo(() => {
     let result = [...files];
 
-    // Search filter
     if (searchQuery.trim() !== '') {
       const q = searchQuery.toLowerCase();
       result = result.filter(
-        f =>
+        (f) =>
           f.name.toLowerCase().includes(q) ||
-          f.uploadedBy.toLowerCase().includes(q)
+          f.uploadedBy.toLowerCase().includes(q),
       );
     }
 
-    // Sorting
     result.sort((a, b) => {
       let comparison = 0;
       if (sortBy === 'name') {
@@ -78,7 +138,8 @@ export default function App() {
       } else if (sortBy === 'size') {
         comparison = a.sizeBytes - b.sizeBytes;
       } else if (sortBy === 'date') {
-        comparison = new Date(a.modifiedDate).getTime() - new Date(b.modifiedDate).getTime();
+        comparison =
+          new Date(a.modifiedDate).getTime() - new Date(b.modifiedDate).getTime();
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
@@ -88,9 +149,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center w-full font-sans text-slate-800">
-      {/* Mobile containment simulation for wider screens */}
       <div className="w-full max-w-md bg-slate-50 min-h-screen shadow-2xl relative flex flex-col overflow-hidden sm:border-x sm:border-slate-200">
-        
         {/* Header Section */}
         <header className="bg-white px-5 pt-8 pb-4 shadow-sm z-10 sticky top-0 border-b border-slate-100 shrink-0">
           <div className="flex items-center justify-between mb-5">
@@ -99,7 +158,11 @@ export default function App() {
                 DocManage
               </h1>
               <p className="text-sm font-medium text-slate-500 mt-0.5">
-                {files.length} active documents
+                {files.length} document{files.length === 1 ? '' : 's'}
+                <span className="text-slate-400">
+                  {' · '}
+                  {isNative ? 'On device' : 'In browser'}
+                </span>
               </p>
             </div>
             <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center border border-blue-100 shadow-inner">
@@ -125,8 +188,8 @@ export default function App() {
               <div className="flex items-center mr-1 text-slate-400">
                 <SlidersHorizontal className="w-4 h-4 ml-1" />
               </div>
-              
-              {(['date', 'name', 'size'] as SortOption[]).map(option => (
+
+              {(['date', 'name', 'size'] as SortOption[]).map((option) => (
                 <button
                   key={option}
                   onClick={() => toggleSort(option)}
@@ -137,9 +200,12 @@ export default function App() {
                   }`}
                 >
                   <span className="capitalize">{option}</span>
-                  {sortBy === option && (
-                    sortOrder === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                  )}
+                  {sortBy === option &&
+                    (sortOrder === 'asc' ? (
+                      <ArrowUp className="w-3 h-3" />
+                    ) : (
+                      <ArrowDown className="w-3 h-3" />
+                    ))}
                 </button>
               ))}
             </div>
@@ -148,26 +214,40 @@ export default function App() {
 
         {/* File List */}
         <div className="flex-1 overflow-y-auto px-5 py-6">
-          <motion.div layout className="flex flex-col gap-4 pb-24">
-            <AnimatePresence mode="popLayout">
-              {filteredAndSortedFiles.length === 0 ? (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="mt-12 text-center text-slate-500 flex flex-col items-center"
-                >
-                  <Search className="w-12 h-12 text-slate-300 mb-3" />
-                  <p className="font-medium text-slate-600">No documents found</p>
-                  <p className="text-sm mt-1">Try adjusting your filters or search query.</p>
-                </motion.div>
-              ) : (
-                filteredAndSortedFiles.map(file => (
-                  <FileCard key={file.id} file={file} onAction={handleAction} />
-                ))
-              )}
-            </AnimatePresence>
-          </motion.div>
+          {isLoading ? (
+            <div className="mt-16 flex flex-col items-center text-slate-400">
+              <Loader2 className="w-8 h-8 animate-spin mb-3" />
+              <p className="text-sm font-medium">Loading your documents…</p>
+            </div>
+          ) : (
+            <motion.div layout className="flex flex-col gap-4 pb-24">
+              <AnimatePresence mode="popLayout">
+                {filteredAndSortedFiles.length === 0 ? (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-12 text-center text-slate-500 flex flex-col items-center"
+                  >
+                    <Search className="w-12 h-12 text-slate-300 mb-3" />
+                    <p className="font-medium text-slate-600">No documents found</p>
+                    <p className="text-sm mt-1">
+                      Tap the + button to upload a document or worksheet.
+                    </p>
+                  </motion.div>
+                ) : (
+                  filteredAndSortedFiles.map((file) => (
+                    <FileCard
+                      key={file.id}
+                      file={file}
+                      busy={busyId === file.id}
+                      onAction={handleAction}
+                    />
+                  ))
+                )}
+              </AnimatePresence>
+            </motion.div>
+          )}
         </div>
 
         {/* Global Upload FAB */}
@@ -175,21 +255,29 @@ export default function App() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={handleGlobalUpload}
-          className="absolute bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 transition-colors z-20"
+          disabled={isUploading}
+          aria-label="Upload document"
+          className="absolute bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:bg-indigo-700 transition-colors z-20 disabled:opacity-70"
         >
-          <Plus className="w-6 h-6" />
+          {isUploading ? (
+            <Loader2 className="w-6 h-6 animate-spin" />
+          ) : (
+            <Plus className="w-6 h-6" />
+          )}
         </motion.button>
 
         {/* Global Toast Notification */}
         <AnimatePresence>
-          {toastMessage && (
+          {toast && (
             <motion.div
               initial={{ y: 100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 50, opacity: 0 }}
-              className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-[320px] bg-slate-900 text-white text-sm font-medium px-4 py-3 rounded-xl shadow-2xl z-30 text-center flex items-center justify-center"
+              className={`absolute bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-[320px] text-white text-sm font-medium px-4 py-3 rounded-xl shadow-2xl z-30 text-center flex items-center justify-center ${
+                toast.tone === 'error' ? 'bg-red-600' : 'bg-slate-900'
+              }`}
             >
-              <div className="truncate">{toastMessage}</div>
+              <div className="truncate">{toast.message}</div>
             </motion.div>
           )}
         </AnimatePresence>
