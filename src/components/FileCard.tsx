@@ -7,16 +7,18 @@ import {
   Image as ImageIcon,
   Code,
   Download,
-  UploadCloud,
+  RefreshCw,
   ExternalLink,
   Trash2,
   ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { LocalFile, FileCategory } from '../types';
 import { formatBytes, formatDate } from '../utils';
 
 interface FileCardProps {
   file: LocalFile;
+  busy?: boolean;
   onAction: (actionName: string, fileId: string) => void;
 }
 
@@ -54,7 +56,7 @@ const getCategoryColor = (category: FileCategory) => {
   }
 };
 
-export const FileCard: React.FC<FileCardProps> = ({ file, onAction }) => {
+export const FileCard: React.FC<FileCardProps> = ({ file, busy, onAction }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -82,6 +84,11 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onAction }) => {
           <p className="text-sm text-slate-500 mt-0.5 pt-0.5">
             {formatDate(file.modifiedDate)} • {formatBytes(file.sizeBytes)}
           </p>
+          {!file.hasContent && (
+            <span className="inline-block mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
+              Sample · re-upload to enable
+            </span>
+          )}
         </div>
 
         <button
@@ -128,16 +135,22 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onAction }) => {
               <div className="flex items-center justify-between border-t border-slate-50 pt-3">
                 <button
                   onClick={() => onAction('open', file.id)}
-                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-blue-600 transition-colors"
+                  disabled={busy}
+                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-blue-600 transition-colors disabled:opacity-40"
                 >
-                  <ExternalLink className="w-5 h-5" />
+                  {busy ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-5 h-5" />
+                  )}
                   <span className="text-[10px] font-medium uppercase tracking-wider">
                     Open
                   </span>
                 </button>
                 <button
                   onClick={() => onAction('download', file.id)}
-                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-indigo-600 transition-colors"
+                  disabled={busy}
+                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-indigo-600 transition-colors disabled:opacity-40"
                 >
                   <Download className="w-5 h-5" />
                   <span className="text-[10px] font-medium uppercase tracking-wider">
@@ -145,17 +158,19 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onAction }) => {
                   </span>
                 </button>
                 <button
-                  onClick={() => onAction('upload', file.id)}
-                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-emerald-600 transition-colors"
+                  onClick={() => onAction('replace', file.id)}
+                  disabled={busy}
+                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-emerald-600 transition-colors disabled:opacity-40"
                 >
-                  <UploadCloud className="w-5 h-5" />
+                  <RefreshCw className="w-5 h-5" />
                   <span className="text-[10px] font-medium uppercase tracking-wider">
-                    Upload
+                    Replace
                   </span>
                 </button>
                 <button
                   onClick={() => onAction('delete', file.id)}
-                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-red-600 transition-colors"
+                  disabled={busy}
+                  className="flex flex-col items-center gap-1.5 px-3 py-1 text-slate-500 hover:text-red-600 transition-colors disabled:opacity-40"
                 >
                   <Trash2 className="w-5 h-5" />
                   <span className="text-[10px] font-medium uppercase tracking-wider">
