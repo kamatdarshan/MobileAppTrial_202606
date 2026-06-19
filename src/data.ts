@@ -65,13 +65,14 @@ export const initialFiles: LocalFile[] = [
   },
   {
     id: '6',
-    name: 'index.html',
-    category: 'code',
+    name: 'Release_Notes.docx',
+    category: 'document',
     sizeBytes: 1024 * 12, // 12 KB
     createdDate: '2026-06-01T09:40:00Z',
     modifiedDate: '2026-06-02T10:15:00Z',
     uploadedBy: 'DevOps SysApp',
-    mimeType: 'text/html',
+    mimeType:
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     hasContent: false,
   },
 ];
